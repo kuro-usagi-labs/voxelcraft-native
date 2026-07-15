@@ -1,0 +1,66 @@
+name: Publish V2 Preview Status
+
+on:
+  workflow_run:
+    workflows:
+      - Build Windows V2 Embedded
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare fixed preview release payload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          mkdir -p payload diagnostics
+          cat > payload/status.txt <<TXT
+          workflow=Build Windows V2 Embedded
+          run_id=${RUN_ID}
+          branch=${RUN_BRANCH}
+          head_sha=${RUN_SHA}
+          conclusion=${RUN_CONCLUSION}
+          run_url=${RUN_URL}
+          TXT
+
+          if [[ "${RUN_CONCLUSION}" == "success" ]]; then
+            gh run download "${RUN_ID}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --name VoxelCraftSurvival-V2-Windows-x64 \
+              --dir payload
+          else
+            gh run download "${RUN_ID}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --name VoxelCraft-V2-Embedded-Validation-Logs \
+              --dir diagnostics || true
+            if find diagnostics -type f -print -quit | grep -q .; then
+              (cd diagnostics && zip -9 -r ../payload/VoxelCraft-V2-Failed-Logs.zip .)
+            fi
+          fi
+
+          gh release delete v2-ci-latest \
+            --repo "${GITHUB_REPOSITORY}" \
+            --cleanup-tag \
+            --yes || true
+
+          mapfile -t assets < <(find payload -maxdepth 1 -type f -print | sort)
+          gh release create v2-ci-latest "${assets[@]}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${RUN_SHA}" \
+            --title "VoxelCraft Survival V2 — Latest CI Preview" \
+            --notes "Automated preview status for the latest V2 build. Conclusion: ${RUN_CONCLUSION}."
