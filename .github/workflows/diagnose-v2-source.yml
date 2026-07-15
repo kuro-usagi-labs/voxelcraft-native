@@ -1,0 +1,44 @@
+name: Diagnose V2 Source Bundle
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect and reconstruct chunks
+        shell: bash
+        run: |
+          set +e
+          mkdir -p build
+          cat source/v2/part-*.b64 | tr -d '\r\n' > build/reconstructed.b64
+          {
+            echo '== Chunk sizes =='
+            wc -c source/v2/part-*.b64
+            echo
+            echo '== Chunk hashes =='
+            sha256sum source/v2/part-*.b64
+            echo
+            base64 --decode build/reconstructed.b64 > build/vcgame-v2.tar.gz
+            echo '== Reconstructed archive =='
+            wc -c build/reconstructed.b64 build/vcgame-v2.tar.gz
+            sha256sum build/reconstructed.b64 build/vcgame-v2.tar.gz
+            echo
+            echo '== Archive test =='
+            tar -tzf build/vcgame-v2.tar.gz | head -40
+            echo "tar_exit=${PIPESTATUS[0]}"
+          } 2>&1 | tee build/source-diagnostic.log
+          exit 0
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraft-V2-Source-Diagnostic
+          path: |
+            build/source-diagnostic.log
+            build/reconstructed.b64
+            build/vcgame-v2.tar.gz
+          retention-days: 7
