@@ -1,3 +1,3 @@
 # Windows CI Smoke Test
 
-This file exists only to trigger and verify the pull-request Windows export workflow.
+This file triggers and verifies the pull-request Windows export workflow after the source archive reconstruction fix.
