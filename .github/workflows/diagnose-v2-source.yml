@@ -15,6 +15,7 @@ jobs:
         run: |
           set +e
           mkdir -p build
+          cat source/v2/part-*.b64 | tr -d '\r\n' > build/reconstructed.b64
           {
             echo '== Chunk sizes =='
             wc -c source/v2/part-*.b64
@@ -22,10 +23,10 @@ jobs:
             echo '== Chunk hashes =='
             sha256sum source/v2/part-*.b64
             echo
-            cat source/v2/part-*.b64 | tr -d '\r\n' | base64 --decode > build/vcgame-v2.tar.gz
+            base64 --decode build/reconstructed.b64 > build/vcgame-v2.tar.gz
             echo '== Reconstructed archive =='
-            wc -c build/vcgame-v2.tar.gz
-            sha256sum build/vcgame-v2.tar.gz
+            wc -c build/reconstructed.b64 build/vcgame-v2.tar.gz
+            sha256sum build/reconstructed.b64 build/vcgame-v2.tar.gz
             echo
             echo '== Archive test =='
             tar -tzf build/vcgame-v2.tar.gz | head -40
@@ -36,5 +37,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: VoxelCraft-V2-Source-Diagnostic
-          path: build/source-diagnostic.log
+          path: |
+            build/source-diagnostic.log
+            build/reconstructed.b64
+            build/vcgame-v2.tar.gz
           retention-days: 7
