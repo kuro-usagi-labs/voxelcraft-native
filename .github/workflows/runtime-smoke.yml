@@ -30,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct project
+      - name: Reconstruct and patch project
         id: project
         shell: bash
         run: |
@@ -41,7 +41,9 @@ jobs:
           unzip -q .ci/voxelcraft-native.zip -d .ci/source
           project_file="$(find .ci/source -type f -name project.godot -print -quit)"
           test -n "${project_file}"
-          echo "dir=$(realpath "$(dirname "${project_file}")")" >> "${GITHUB_OUTPUT}"
+          project_dir="$(realpath "$(dirname "${project_file}")")"
+          patch -d "${project_dir}" -p1 < source/patches/runtime-blank-screen.patch
+          echo "dir=${project_dir}" >> "${GITHUB_OUTPUT}"
 
       - name: Download custom Godot editor
         id: engine
@@ -60,8 +62,18 @@ jobs:
       - name: Import resources
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           "${{ steps.engine.outputs.bin }}" --headless --path "${{ steps.project.outputs.dir }}" --import > .ci/import.log 2>&1
+          exit_code=$?
+          set -e
+          cat .ci/import.log
+          if grep -Eqi 'SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid assignment|Cannot get class|ERROR:' .ci/import.log; then
+            echo "Import errors were detected." >&2
+            exit 1
+          fi
+          if [[ "${exit_code}" -ne 0 ]]; then
+            exit "${exit_code}"
+          fi
 
       - name: Start game for five frames
         id: runtime
@@ -81,6 +93,10 @@ jobs:
 
           if grep -Eqi 'SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid assignment|Cannot get class|ERROR:' .ci/runtime.log; then
             echo "Runtime errors were detected." >&2
+            exit 1
+          fi
+          if ! grep -q 'VOXELCRAFT_BOOT_OK' .ci/runtime.log; then
+            echo "Main scene never reached its boot marker." >&2
             exit 1
           fi
           if [[ "${exit_code}" -ne 0 ]]; then
