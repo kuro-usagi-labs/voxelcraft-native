@@ -1,0 +1,173 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: voxelcraft-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VOXEL_TOOLS_TAG: v1.6
+  GODOT_EDITOR_ARCHIVE: godot.linuxbsd.editor.x86_64.zip
+  WINDOWS_TEMPLATE_ARCHIVE: godot.windows.template_release.x86_64.exe.zip
+
+jobs:
+  build-windows:
+    name: Export Windows x64
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract game source
+        id: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/source
+          unzip -q source/voxelcraft-native.zip -d .ci/source
+          project_file="$(find .ci/source -type f -name project.godot -print -quit)"
+          if [[ -z "${project_file}" ]]; then
+            echo "project.godot was not found in the source archive." >&2
+            exit 1
+          fi
+          project_dir="$(dirname "${project_file}")"
+          echo "dir=$(realpath "${project_dir}")" >> "${GITHUB_OUTPUT}"
+          echo "Project directory: ${project_dir}"
+
+      - name: Download Voxel Tools 1.6 engine and Windows template
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/engine .ci/template
+          base_url="https://github.com/Zylann/godot_voxel/releases/download/${VOXEL_TOOLS_TAG}"
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output ".ci/${GODOT_EDITOR_ARCHIVE}" \
+            "${base_url}/${GODOT_EDITOR_ARCHIVE}"
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output ".ci/${WINDOWS_TEMPLATE_ARCHIVE}" \
+            "${base_url}/${WINDOWS_TEMPLATE_ARCHIVE}"
+
+          test -s ".ci/${GODOT_EDITOR_ARCHIVE}"
+          test -s ".ci/${WINDOWS_TEMPLATE_ARCHIVE}"
+          unzip -q ".ci/${GODOT_EDITOR_ARCHIVE}" -d .ci/engine
+          unzip -q ".ci/${WINDOWS_TEMPLATE_ARCHIVE}" -d .ci/template
+
+      - name: Locate custom engine binaries
+        id: binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot_bin="$(find .ci/engine -type f -name 'godot*' ! -name '*.zip' -print -quit)"
+          template_bin="$(find .ci/template -type f -iname '*.exe' -print -quit)"
+
+          if [[ -z "${godot_bin}" || ! -f "${godot_bin}" ]]; then
+            echo "Godot editor binary was not found." >&2
+            find .ci/engine -maxdepth 4 -type f -print >&2
+            exit 1
+          fi
+          if [[ -z "${template_bin}" || ! -f "${template_bin}" ]]; then
+            echo "Windows export template was not found." >&2
+            find .ci/template -maxdepth 4 -type f -print >&2
+            exit 1
+          fi
+
+          chmod +x "${godot_bin}"
+          echo "godot=$(realpath "${godot_bin}")" >> "${GITHUB_OUTPUT}"
+          echo "template=$(realpath "${template_bin}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure custom export template
+        shell: bash
+        env:
+          PROJECT_DIR: ${{ steps.project.outputs.dir }}
+          TEMPLATE_PATH: ${{ steps.binaries.outputs.template }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          preset = Path(os.environ["PROJECT_DIR"]) / "export_presets.cfg"
+          text = preset.read_text(encoding="utf-8")
+          template = os.environ["TEMPLATE_PATH"].replace("\\", "/").replace('"', '\\"')
+          marker = 'custom_template/release=""'
+          replacement = f'custom_template/release="{template}"'
+          if marker not in text:
+              raise SystemExit("custom_template/release marker was not found")
+          preset.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          PY
+
+      - name: Import Godot resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ steps.binaries.outputs.godot }}" \
+            --headless \
+            --path "${{ steps.project.outputs.dir }}" \
+            --import
+
+      - name: Export playable Windows build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/windows
+          "${{ steps.binaries.outputs.godot }}" \
+            --headless \
+            --path "${{ steps.project.outputs.dir }}" \
+            --export-release "Windows Desktop" \
+            "${GITHUB_WORKSPACE}/build/windows/VoxelCraftNative.exe"
+
+          test -s build/windows/VoxelCraftNative.exe
+
+      - name: Package player build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > build/windows/README.txt <<'TXT'
+          VOXELCRAFT NATIVE — WINDOWS X64
+
+          Extract this ZIP, then open VoxelCraftNative.exe.
+
+          Controls:
+          WASD move | Space jump | Shift sprint | Ctrl crouch
+          Left click mine | Right click place | 1-9 hotbar
+          C crafting | F eat/use | Escape pause
+
+          The executable is unsigned. Windows SmartScreen may show an
+          unknown-publisher warning for this development build.
+          TXT
+
+          cd build/windows
+          zip -9 ../VoxelCraftNative-Windows-x64.zip VoxelCraftNative.exe README.txt
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraftNative-Windows-x64
+          path: build/VoxelCraftNative-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish tagged build to Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            build/VoxelCraftNative-Windows-x64.zip \
+            --title "VoxelCraft Native ${GITHUB_REF_NAME}" \
+            --generate-notes
