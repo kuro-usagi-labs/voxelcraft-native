@@ -1,0 +1,98 @@
+name: Runtime Startup Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voxelcraft-runtime-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VOXEL_TOOLS_TAG: v1.6
+  GODOT_EDITOR_ARCHIVE: godot.linuxbsd.editor.x86_64.zip
+  GODOT_EDITOR_SHA256: 98e2ead648590ae135d2f162e225433d15d17c84ff90a4b41384c4b1f4bcf6ae
+  PROJECT_ARCHIVE_SHA256: c8e4d1a49159a5338724cd161fa7d299613e96382396ad3c282f02e6e3121372
+
+jobs:
+  startup:
+    name: Open main scene
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reconstruct project
+        id: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/source .ci/engine
+          cat source/chunks/part-*.b64 | tr -d '\r\n' | base64 --decode > .ci/voxelcraft-native.zip
+          echo "${PROJECT_ARCHIVE_SHA256}  .ci/voxelcraft-native.zip" | sha256sum --check
+          unzip -q .ci/voxelcraft-native.zip -d .ci/source
+          project_file="$(find .ci/source -type f -name project.godot -print -quit)"
+          test -n "${project_file}"
+          echo "dir=$(realpath "$(dirname "${project_file}")")" >> "${GITHUB_OUTPUT}"
+
+      - name: Download custom Godot editor
+        id: engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/Zylann/godot_voxel/releases/download/${VOXEL_TOOLS_TAG}/${GODOT_EDITOR_ARCHIVE}"
+          curl --fail --location --retry 5 --retry-all-errors --output ".ci/${GODOT_EDITOR_ARCHIVE}" "${url}"
+          echo "${GODOT_EDITOR_SHA256}  .ci/${GODOT_EDITOR_ARCHIVE}" | sha256sum --check
+          unzip -q ".ci/${GODOT_EDITOR_ARCHIVE}" -d .ci/engine
+          godot_bin="$(find .ci/engine -type f -name 'godot*' ! -name '*.zip' -print -quit)"
+          test -f "${godot_bin}"
+          chmod +x "${godot_bin}"
+          echo "bin=$(realpath "${godot_bin}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Import resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ steps.engine.outputs.bin }}" --headless --path "${{ steps.project.outputs.dir }}" --import > .ci/import.log 2>&1
+
+      - name: Start game for five frames
+        id: runtime
+        shell: bash
+        run: |
+          set +e
+          "${{ steps.engine.outputs.bin }}" \
+            --headless \
+            --path "${{ steps.project.outputs.dir }}" \
+            --quit-after 5 \
+            > .ci/runtime.log 2>&1
+          exit_code=$?
+          set -e
+
+          cat .ci/runtime.log
+          echo "exit_code=${exit_code}" >> "${GITHUB_OUTPUT}"
+
+          if grep -Eqi 'SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid assignment|Cannot get class|ERROR:' .ci/runtime.log; then
+            echo "Runtime errors were detected." >&2
+            exit 1
+          fi
+          if [[ "${exit_code}" -ne 0 ]]; then
+            echo "Godot exited with code ${exit_code}." >&2
+            exit "${exit_code}"
+          fi
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraft-Runtime-Logs
+          path: |
+            .ci/import.log
+            .ci/runtime.log
+          if-no-files-found: warn
+          retention-days: 7
