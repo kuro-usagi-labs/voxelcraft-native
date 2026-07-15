@@ -19,7 +19,10 @@ concurrency:
 env:
   VOXEL_TOOLS_TAG: v1.6
   GODOT_EDITOR_ARCHIVE: godot.linuxbsd.editor.x86_64.zip
+  GODOT_EDITOR_SHA256: 98e2ead648590ae135d2f162e225433d15d17c84ff90a4b41384c4b1f4bcf6ae
   WINDOWS_TEMPLATE_ARCHIVE: godot.windows.template_release.x86_64.exe.zip
+  WINDOWS_TEMPLATE_SHA256: 9556c3893a07f39451c654789e16a057eec3d344428044b0d3e7ed44ae905857
+  PROJECT_ARCHIVE_SHA256: c8e4d1a49159a5338724cd161fa7d299613e96382396ad3c282f02e6e3121372
 
 jobs:
   build-windows:
@@ -31,16 +34,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract game source
+      - name: Reconstruct and verify game source
         id: project
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .ci/source
-          unzip -q source/voxelcraft-native.zip -d .ci/source
+          cat source/chunks/part-*.b64 | tr -d '\r\n' | base64 --decode > .ci/voxelcraft-native.zip
+          echo "${PROJECT_ARCHIVE_SHA256}  .ci/voxelcraft-native.zip" | sha256sum --check
+          unzip -q .ci/voxelcraft-native.zip -d .ci/source
+
           project_file="$(find .ci/source -type f -name project.godot -print -quit)"
           if [[ -z "${project_file}" ]]; then
-            echo "project.godot was not found in the source archive." >&2
+            echo "project.godot was not found in the reconstructed source archive." >&2
             exit 1
           fi
           project_dir="$(dirname "${project_file}")"
@@ -62,8 +68,8 @@ jobs:
             --output ".ci/${WINDOWS_TEMPLATE_ARCHIVE}" \
             "${base_url}/${WINDOWS_TEMPLATE_ARCHIVE}"
 
-          test -s ".ci/${GODOT_EDITOR_ARCHIVE}"
-          test -s ".ci/${WINDOWS_TEMPLATE_ARCHIVE}"
+          echo "${GODOT_EDITOR_SHA256}  .ci/${GODOT_EDITOR_ARCHIVE}" | sha256sum --check
+          echo "${WINDOWS_TEMPLATE_SHA256}  .ci/${WINDOWS_TEMPLATE_ARCHIVE}" | sha256sum --check
           unzip -q ".ci/${GODOT_EDITOR_ARCHIVE}" -d .ci/engine
           unzip -q ".ci/${WINDOWS_TEMPLATE_ARCHIVE}" -d .ci/template
 
