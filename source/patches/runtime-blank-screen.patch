@@ -1,0 +1,23 @@
+diff --git a/scripts/core/main.gd b/scripts/core/main.gd
+--- a/scripts/core/main.gd
++++ b/scripts/core/main.gd
+@@ -18,6 +18,7 @@ func _ready() -> void:
+ 	_build_main_menu()
+ 	_load_last_world()
+ 	_validate_engine()
++	print("VOXELCRAFT_BOOT_OK")
+ 
+ 
+ func _build_main_menu() -> void:
+diff --git a/scripts/world/world_runtime.gd b/scripts/world/world_runtime.gd
+--- a/scripts/world/world_runtime.gd
++++ b/scripts/world/world_runtime.gd
+@@ -99,7 +99,7 @@ func _build_environment() -> void:
+ 
+ func _build_terrain() -> void:
+ 	registry = RegistryScript.new()
+-	var library := registry.build_library()
++	var library = registry.build_library()
+ 
+ 	var mesher = ClassDB.instantiate("VoxelMesherBlocky")
+ 	mesher.set("library", library)
