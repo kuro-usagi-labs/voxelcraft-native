@@ -1,0 +1,64 @@
+name: Build Windows V2 Embedded
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags:
+      - "v2*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: voxelcraft-v2-embedded-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Boot world and export Windows x64
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate embedded assets, menu, terrain, spawn, and export
+        shell: bash
+        run: bash ci/build_v2_embedded.sh
+
+      - name: Upload playable Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraftSurvival-V2-Windows-x64
+          path: build-v2-embedded/VoxelCraftSurvival-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraft-V2-Embedded-Validation-Logs
+          path: |
+            build-v2-embedded/import.log
+            build-v2-embedded/menu.log
+            build-v2-embedded/world.log
+            build-v2-embedded/export.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish tagged build to Releases
+        if: startsWith(github.ref, 'refs/tags/v2')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            build-v2-embedded/VoxelCraftSurvival-Windows-x64.zip \
+            --title "VoxelCraft Survival ${GITHUB_REF_NAME}" \
+            --generate-notes
