@@ -1,0 +1,81 @@
+--- a/scripts/core/main.gd
++++ b/scripts/core/main.gd
+@@ -19,6 +19,7 @@
+ 	_build_main_menu()
+ 	_load_last_world()
+ 	_validate_engine()
++	print("VOXELCRAFT_BOOT_OK")
+ 
+ 
+ func _build_main_menu() -> void:
+--- a/scripts/world/world_runtime.gd
++++ b/scripts/world/world_runtime.gd
+@@ -99,7 +99,7 @@
+ 
+ func _build_terrain() -> void:
+ 	registry = RegistryScript.new()
+-	var library := registry.build_library()
++	var library = registry.build_library()
+ 
+ 	var mesher = ClassDB.instantiate("VoxelMesherBlocky")
+ 	mesher.set("library", library)
+--- a/scripts/player/player_controller.gd
++++ b/scripts/player/player_controller.gd
+@@ -149,7 +149,7 @@
+ 
+ 
+ func _use_selected_item() -> void:
+-	var selected_item := inventory.get_selected_item()
++	var selected_item: int = int(inventory.get_selected_item())
+ 	if selected_item == InventoryScript.ITEM_APPLE:
+ 		if inventory.get_count(selected_item) > 0 and survival.eat(4.5, 0.5):
+ 			inventory.remove_item(selected_item, 1)
+--- a/scripts/player/block_interactor.gd
++++ b/scripts/player/block_interactor.gd
+@@ -106,14 +106,14 @@
+ 
+ 
+ func _mine_target(delta: float) -> void:
+-	var hardness := registry.get_hardness(_target_block)
++	var hardness: float = float(registry.get_hardness(_target_block))
+ 	if hardness >= 999.0:
+ 		_mining_progress = 0.0
+ 		message_requested.emit("Bedrock cannot be mined")
+ 		return
+ 
+-	var selected_item := inventory.get_selected_item()
+-	var speed := inventory.get_mining_multiplier(selected_item, _target_block)
++	var selected_item: int = int(inventory.get_selected_item())
++	var speed: float = float(inventory.get_mining_multiplier(selected_item, _target_block))
+ 	if survival.stamina < 8.0:
+ 		speed *= 0.72
+ 	_mining_progress += delta * speed / maxf(0.05, hardness)
+@@ -122,7 +122,7 @@
+ 		return
+ 
+ 	voxel_tool.call("set_voxel", _target_position, Blocks.AIR)
+-	var dropped := registry.get_drop(_target_block)
++	var dropped: int = int(registry.get_drop(_target_block))
+ 	if dropped != Blocks.AIR:
+ 		inventory.add_item(dropped, 1)
+ 	if _target_block == Blocks.LEAVES and randf() < 0.16:
+@@ -136,7 +136,7 @@
+ 
+ 
+ func _try_place(place_position: Vector3i) -> void:
+-	var selected_item := inventory.get_selected_item()
++	var selected_item: int = int(inventory.get_selected_item())
+ 	if not registry.is_placeable(selected_item):
+ 		message_requested.emit("Select a placeable block")
+ 		return
+--- a/scripts/ui/hud.gd
++++ b/scripts/ui/hud.gd
+@@ -258,7 +258,7 @@
+ 	for index in InventoryScript.HOTBAR_SIZE:
+ 		var item_id: int = player.inventory.hotbar[index]
+ 		_slot_name_labels[index].text = player.inventory.get_item_name(item_id, registry)
+-		var count := player.inventory.get_count(item_id)
++		var count: int = int(player.inventory.get_count(item_id))
+ 		_slot_count_labels[index].text = str(count) if count > 0 else "—"
+ 		_hotbar_slots[index].modulate = (
+ 			Color(1.0, 0.87, 0.48) if index == player.inventory.selected_slot else Color.WHITE

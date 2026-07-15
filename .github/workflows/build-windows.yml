@@ -34,7 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct and verify game source
+      - name: Reconstruct, verify, and patch game source
         id: project
         shell: bash
         run: |
@@ -49,8 +49,9 @@ jobs:
             echo "project.godot was not found in the reconstructed source archive." >&2
             exit 1
           fi
-          project_dir="$(dirname "${project_file}")"
-          echo "dir=$(realpath "${project_dir}")" >> "${GITHUB_OUTPUT}"
+          project_dir="$(realpath "$(dirname "${project_file}")")"
+          patch -d "${project_dir}" -p1 < source/patches/runtime-blank-screen.patch
+          echo "dir=${project_dir}" >> "${GITHUB_OUTPUT}"
           echo "Project directory: ${project_dir}"
 
       - name: Download Voxel Tools 1.6 engine and Windows template
@@ -120,11 +121,44 @@ jobs:
       - name: Import Godot resources
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           "${{ steps.binaries.outputs.godot }}" \
             --headless \
             --path "${{ steps.project.outputs.dir }}" \
-            --import
+            --import > .ci/import.log 2>&1
+          exit_code=$?
+          set -e
+          cat .ci/import.log
+          if grep -Eqi 'SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid assignment|Cannot get class|ERROR:' .ci/import.log; then
+            echo "Import errors were detected." >&2
+            exit 1
+          fi
+          if [[ "${exit_code}" -ne 0 ]]; then
+            exit "${exit_code}"
+          fi
+
+      - name: Verify main scene starts
+        shell: bash
+        run: |
+          set +e
+          "${{ steps.binaries.outputs.godot }}" \
+            --headless \
+            --path "${{ steps.project.outputs.dir }}" \
+            --quit-after 5 > .ci/runtime.log 2>&1
+          exit_code=$?
+          set -e
+          cat .ci/runtime.log
+          if grep -Eqi 'SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid assignment|Cannot get class|ERROR:' .ci/runtime.log; then
+            echo "Runtime errors were detected." >&2
+            exit 1
+          fi
+          if ! grep -q 'VOXELCRAFT_BOOT_OK' .ci/runtime.log; then
+            echo "Main scene never reached its boot marker." >&2
+            exit 1
+          fi
+          if [[ "${exit_code}" -ne 0 ]]; then
+            exit "${exit_code}"
+          fi
 
       - name: Export playable Windows build
         shell: bash
@@ -168,6 +202,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelCraft-Build-Logs
+          path: |
+            .ci/import.log
+            .ci/runtime.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Publish tagged build to Releases
         if: startsWith(github.ref, 'refs/tags/v')
