@@ -28,11 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify V3 source chunks
-        shell: bash
-        run: bash ci/check_v3_chunks.sh
-
-      - name: Validate scripts, menu, terrain, spawn, and export
+      - name: Validate source, scripts, menu, terrain, spawn, and export
         shell: bash
         run: |
           set +e
@@ -56,9 +52,7 @@ jobs:
             echo
             echo '```text'
             if [[ -f build/pipeline.log ]]; then
-              tail -n 120 build/pipeline.log
-            elif [[ -f build/patch.log ]]; then
-              cat build/patch.log
+              tail -n 140 build/pipeline.log
             else
               echo 'No pipeline log was produced.'
             fi
@@ -81,7 +75,6 @@ jobs:
         with:
           name: VoxelCraft-V3-Validation-Logs
           path: |
-            build/patch.log
             build/pipeline.log
             build/import.log
             build/menu.log
