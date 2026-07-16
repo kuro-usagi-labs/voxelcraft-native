@@ -13,12 +13,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: voxelcraft-v2-${{ github.ref }}
+  group: voxelcraft-v3-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-windows:
-    name: Validate V2 world and export Windows x64
+    name: Validate V3 world and export Windows x64
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -26,7 +26,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate menu, terrain, spawn, and export
+      - name: Verify V3 source chunks
+        shell: bash
+        run: bash ci/check_v3_chunks.sh
+
+      - name: Validate scripts, menu, terrain, spawn, and export
         shell: bash
         run: bash ci/build_v2.sh
 
@@ -43,8 +47,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: VoxelCraft-V2-Validation-Logs
+          name: VoxelCraft-V3-Validation-Logs
           path: |
+            build/patch.log
             build/import.log
             build/menu.log
             build/world.log
