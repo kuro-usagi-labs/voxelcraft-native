@@ -11,14 +11,16 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 concurrency:
-  group: voxelcraft-v2-${{ github.ref }}
+  group: voxelcraft-v3-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-windows:
-    name: Validate V2 world and export Windows x64
+    name: Validate V3 world and export Windows x64
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -26,9 +28,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate menu, terrain, spawn, and export
+      - name: Validate source, scripts, menu, terrain, spawn, and export
         shell: bash
-        run: bash ci/build_v2.sh
+        run: |
+          set +e
+          set -o pipefail
+          bash ci/build_v2.sh 2>&1 | tee /tmp/voxelcraft-v3-pipeline.log
+          status=${PIPESTATUS[0]}
+          set -e
+          mkdir -p build
+          cp /tmp/voxelcraft-v3-pipeline.log build/pipeline.log
+          exit "${status}"
+
+      - name: Post failure diagnostics to pull request
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '### V3 CI failure diagnostics'
+            echo
+            echo '```text'
+            if [[ -f build/pipeline.log ]]; then
+              tail -n 140 build/pipeline.log
+            else
+              echo 'No pipeline log was produced.'
+            fi
+            echo '```'
+          } > /tmp/v3-ci-comment.md
+          gh pr comment "${PR_NUMBER}" --body-file /tmp/v3-ci-comment.md
 
       - name: Upload playable Windows artifact
         uses: actions/upload-artifact@v4
@@ -43,8 +73,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: VoxelCraft-V2-Validation-Logs
+          name: VoxelCraft-V3-Validation-Logs
           path: |
+            build/pipeline.log
             build/import.log
             build/menu.log
             build/world.log

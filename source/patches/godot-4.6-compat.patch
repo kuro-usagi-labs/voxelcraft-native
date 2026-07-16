@@ -1,0 +1,98 @@
+diff -ruN canonical-v3/scripts/player/inventory_component.gd canonical-v3-compat2/scripts/player/inventory_component.gd
+--- canonical-v3/scripts/player/inventory_component.gd	2026-07-15 17:27:03.000000000 +0000
++++ canonical-v3-compat2/scripts/player/inventory_component.gd	2026-07-16 03:26:43.048553935 +0000
+@@ -172,7 +172,7 @@
+ 	if get_count(item_id) <= 0 or not ITEM_DATA.has(item_id):
+ 		return 1.0
+ 	var tool_type := str(ITEM_DATA[item_id].get("tool", Blocks.TOOL_NONE))
+-	var preferred := registry.get_tool(target_block)
++	var preferred: String = str(registry.get_tool(target_block))
+ 	var tier := 1.0
+ 	if item_id in [ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL]:
+ 		tier = 5.2
+diff -ruN canonical-v3/scripts/world/world_generator.gd canonical-v3-compat2/scripts/world/world_generator.gd
+--- canonical-v3/scripts/world/world_generator.gd	2026-07-16 03:15:51.126250188 +0000
++++ canonical-v3-compat2/scripts/world/world_generator.gd	2026-07-16 03:26:43.050729317 +0000
+@@ -254,13 +254,13 @@
+ 	var max_cell_z := floori(float(origin.z + size.z + 6) / TREE_CELL_SIZE)
+ 	for cell_z in range(min_cell_z, max_cell_z + 1):
+ 		for cell_x in range(min_cell_x, max_cell_x + 1):
+-			var hash_value := _hash_2d(cell_x, cell_z)
+-			var tree_x := cell_x * TREE_CELL_SIZE + 1 + abs(hash_value >> 5) % 6
+-			var tree_z := cell_z * TREE_CELL_SIZE + 1 + abs(hash_value >> 11) % 6
+-			var surface_y := get_surface_height(tree_x, tree_z)
+-			var biome := get_biome(tree_x, tree_z, surface_y)
+-			var chance := abs(hash_value) % 100
+-			var threshold := 0
++			var hash_value: int = _hash_2d(cell_x, cell_z)
++			var tree_x: int = cell_x * TREE_CELL_SIZE + 1 + absi(hash_value >> 5) % 6
++			var tree_z: int = cell_z * TREE_CELL_SIZE + 1 + absi(hash_value >> 11) % 6
++			var surface_y: int = get_surface_height(tree_x, tree_z)
++			var biome: int = get_biome(tree_x, tree_z, surface_y)
++			var chance: int = absi(hash_value) % 100
++			var threshold: int = 0
+ 			if biome == BIOME_FOREST:
+ 				threshold = 58
+ 			elif biome == BIOME_BIRCH_FOREST:
+@@ -276,14 +276,14 @@
+ 
+ 
+ func _place_tree(buffer: VoxelBuffer, origin: Vector3i, size: Vector3i, x: int, base_y: int, z: int, hash_value: int, birch: bool) -> void:
+-	var trunk := Blocks.BIRCH_LOG if birch else Blocks.LOG
+-	var leaves := Blocks.BIRCH_LEAVES if birch else Blocks.LEAVES
+-	var trunk_height := 5 + abs(hash_value >> 17) % 3
++	var trunk: int = Blocks.BIRCH_LOG if birch else Blocks.LOG
++	var leaves: int = Blocks.BIRCH_LEAVES if birch else Blocks.LEAVES
++	var trunk_height: int = 5 + absi(hash_value >> 17) % 3
+ 	for y in range(base_y, base_y + trunk_height):
+ 		_set_structure_voxel(buffer, origin, size, Vector3i(x, y, z), trunk, true)
+-	var crown_y := base_y + trunk_height - 1
++	var crown_y: int = base_y + trunk_height - 1
+ 	for oy in range(-2, 3):
+-		var radius := 2 if oy <= 0 else 1
++		var radius: int = 2 if oy <= 0 else 1
+ 		for oz in range(-radius, radius + 1):
+ 			for ox in range(-radius, radius + 1):
+ 				if abs(ox) == radius and abs(oz) == radius and (_hash_3d(x + ox, crown_y + oy, z + oz) & 1) == 0:
+@@ -300,15 +300,15 @@
+ 	var max_cell_z := floori(float(origin.z + size.z + 2) / CACTUS_CELL_SIZE)
+ 	for cell_z in range(min_cell_z, max_cell_z + 1):
+ 		for cell_x in range(min_cell_x, max_cell_x + 1):
+-			var hash_value := _hash_2d(cell_x + 9000, cell_z - 9000)
+-			if abs(hash_value) % 100 >= 34:
++			var hash_value: int = _hash_2d(cell_x + 9000, cell_z - 9000)
++			if absi(hash_value) % 100 >= 34:
+ 				continue
+-			var x := cell_x * CACTUS_CELL_SIZE + 2 + abs(hash_value >> 4) % 7
+-			var z := cell_z * CACTUS_CELL_SIZE + 2 + abs(hash_value >> 10) % 7
+-			var surface_y := get_surface_height(x, z)
++			var x: int = cell_x * CACTUS_CELL_SIZE + 2 + absi(hash_value >> 4) % 7
++			var z: int = cell_z * CACTUS_CELL_SIZE + 2 + absi(hash_value >> 10) % 7
++			var surface_y: int = get_surface_height(x, z)
+ 			if get_biome(x, z, surface_y) != BIOME_DESERT:
+ 				continue
+-			var height := 2 + abs(hash_value >> 16) % 3
++			var height: int = 2 + absi(hash_value >> 16) % 3
+ 			for y in range(surface_y + 1, surface_y + 1 + height):
+ 				_set_structure_voxel(buffer, origin, size, Vector3i(x, y, z), Blocks.CACTUS, false)
+ 
+diff -ruN canonical-v3/scripts/world/world_runtime.gd canonical-v3-compat2/scripts/world/world_runtime.gd
+--- canonical-v3/scripts/world/world_runtime.gd	2026-07-16 03:15:51.125388667 +0000
++++ canonical-v3-compat2/scripts/world/world_runtime.gd	2026-07-16 03:26:43.049534473 +0000
+@@ -110,7 +110,6 @@
+ 	_sky_material.ground_horizon_color = Color(0.46, 0.56, 0.53)
+ 	_sky_material.sun_angle_max = 10.0
+ 	_sky_material.sun_curve = 0.08
+-	_sky_material.sun_energy_multiplier = 4.0
+ 	var sky := Sky.new()
+ 	sky.sky_material = _sky_material
+ 	_environment.sky = sky
+@@ -317,6 +316,8 @@
+ 
+ 
+ func _update_day_night(delta: float) -> void:
++	if _sun == null or _environment == null or _sky_material == null:
++		return
+ 	var previous_time := _day_time
+ 	_day_time = fmod(_day_time + delta / 900.0, 1.0)
+ 	if _day_time < previous_time:
