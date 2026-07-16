@@ -1,0 +1,251 @@
+diff -ruN currentbase-canonical/README.md canonical-v3/README.md
+--- currentbase-canonical/README.md	2026-07-15 17:37:30.000000000 +0000
++++ canonical-v3/README.md	2026-07-16 03:15:51.127903027 +0000
+@@ -1,4 +1,4 @@
+-# VoxelCraft Survival V2
++# VoxelCraft Survival V3
+ 
+ A native voxel survival sandbox built with Godot 4.6 and the Voxel Tools 1.6 C++ module. V2 replaces the original debug-like prototype with a proper procedural world, surface-safe spawning, survival HUD, mining feedback, item pickups, crafting, day/night, hostile mobs, sound, and an original pixel-art texture atlas.
+ 
+@@ -22,3 +22,16 @@
+ GitHub Actions uses the pinned Voxel Tools custom Godot build, runs import checks, boots the menu, creates a real test world, waits for terrain around spawn to mesh, and only then exports the Windows executable.
+ 
+ This is an original clean-room project. It aims for the familiar feel of a block survival sandbox without redistributing Minecraft code, textures, sounds, names, or other Mojang assets.
++
++
++## V3 validation gate
++
++The Windows build is published only after the custom Godot/Voxel Tools editor:
++
++- imports every resource without script errors,
++- boots the main menu and reaches `VOXELCRAFT_BOOT_OK`,
++- generates a fresh deterministic world and waits for spawn chunks,
++- verifies a solid non-water spawn floor and clear head space, and
++- reaches `VOXELCRAFT_WORLD_SMOKE_OK` before export.
++
++V3 uses a separate world/save namespace so prototype saves cannot corrupt new worlds.
+diff -ruN currentbase-canonical/scripts/core/main.gd canonical-v3/scripts/core/main.gd
+--- currentbase-canonical/scripts/core/main.gd	2026-07-15 17:34:57.000000000 +0000
++++ canonical-v3/scripts/core/main.gd	2026-07-16 03:15:51.123324762 +0000
+@@ -2,7 +2,7 @@
+ 
+ const WorldRuntimeScript = preload("res://scripts/world/world_runtime.gd")
+ const ThemeUtil = preload("res://scripts/ui/game_theme.gd")
+-const WORLD_VERSION := 2
++const WORLD_VERSION := 3
+ 
+ var _menu_layer: CanvasLayer
+ var _menu_root: Control
+@@ -23,7 +23,7 @@
+ 	_validate_engine()
+ 	print("VOXELCRAFT_BOOT_OK")
+ 	if "--vc-smoke-world" in OS.get_cmdline_user_args():
+-		var smoke_config := {"version": WORLD_VERSION, "name": "CI Smoke World", "folder": "ci_smoke_v2", "seed": 125381066}
++		var smoke_config := {"version": WORLD_VERSION, "name": "CI Smoke World", "folder": "ci_smoke_v3", "seed": 125381066}
+ 		_start_world.call_deferred(smoke_config)
+ 
+ 
+@@ -142,7 +142,7 @@
+ 	_menu_root.add_child(controls)
+ 
+ 	var version := Label.new()
+-	version.text = "V2 SURVIVAL FOUNDATION"
++	version.text = "V3 SURVIVAL • NATIVE VOXEL"
+ 	version.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+ 	version.position = Vector2(-210, -36)
+ 	version.size = Vector2(190, 24)
+diff -ruN currentbase-canonical/scripts/tests/world_smoke.gd canonical-v3/scripts/tests/world_smoke.gd
+--- currentbase-canonical/scripts/tests/world_smoke.gd	1970-01-01 00:00:00.000000000 +0000
++++ canonical-v3/scripts/tests/world_smoke.gd	2026-07-16 03:15:54.726924094 +0000
+@@ -0,0 +1,60 @@
++extends SceneTree
++
++const WorldRuntimeScript = preload("res://scripts/world/world_runtime.gd")
++const Blocks = preload("res://scripts/world/block_registry.gd")
++
++const TEST_TIMEOUT_MSEC := 90000
++const TEST_SEED := 125381066
++
++
++func _initialize() -> void:
++	_run.call_deferred()
++
++
++func _run() -> void:
++	var runtime = WorldRuntimeScript.new()
++	runtime.configure("CI V3 Surface Test", "ci_v3_surface_test", TEST_SEED)
++	root.add_child(runtime)
++
++	var timeout_at := Time.get_ticks_msec() + TEST_TIMEOUT_MSEC
++	while not bool(runtime.get("_world_ready")) and Time.get_ticks_msec() < timeout_at:
++		await process_frame
++
++	if not bool(runtime.get("_world_ready")):
++		_fail("World did not finish meshing spawn chunks before timeout")
++		return
++
++	var snapshot: Dictionary = runtime.call("get_validation_snapshot")
++	var spawn: Vector3 = snapshot.get("spawn", Vector3.ZERO)
++	var surface := int(snapshot.get("surface", -9999))
++	var sea_level := int(snapshot.get("sea_level", 9999))
++	var floor_block := int(snapshot.get("floor_block", Blocks.AIR))
++	var head_block := int(snapshot.get("head_block", Blocks.AIR))
++
++	if spawn.y < float(surface) + 0.8 or spawn.y > float(surface) + 4.5:
++		_fail("Unsafe spawn height: spawn=%s surface=%d" % [spawn, surface])
++		return
++	if surface <= sea_level + 2:
++		_fail("Spawn selected ocean/beach elevation: surface=%d sea=%d" % [surface, sea_level])
++		return
++	if floor_block in [Blocks.AIR, Blocks.WATER]:
++		_fail("Spawn floor is not solid: block=%d" % floor_block)
++		return
++	if head_block != Blocks.AIR:
++		_fail("Spawn head space is obstructed: block=%d" % head_block)
++		return
++
++	print(
++		(
++			"VOXELCRAFT_WORLD_SMOKE_OK spawn=%s surface=%d sea=%d biome=%d floor=%d"
++			% [spawn, surface, sea_level, int(snapshot.get("biome", -1)), floor_block]
++		)
++	)
++	runtime.queue_free()
++	await process_frame
++	quit(0)
++
++
++func _fail(message: String) -> void:
++	push_error("VOXELCRAFT_WORLD_SMOKE_FAIL: %s" % message)
++	quit(1)
+diff -ruN currentbase-canonical/scripts/world/mob_spawner.gd canonical-v3/scripts/world/mob_spawner.gd
+--- currentbase-canonical/scripts/world/mob_spawner.gd	2026-07-15 17:35:15.000000000 +0000
++++ canonical-v3/scripts/world/mob_spawner.gd	2026-07-16 03:15:51.127122765 +0000
+@@ -53,7 +53,10 @@
+ 		var z := roundi(player.global_position.z + sin(angle) * distance)
+ 		var y := int(generator.call("get_surface_height", x, z))
+ 		var sea_level := int(generator.call("get_sea_level"))
+-		if y <= sea_level + 1:
++		var slope := int(generator.call("get_local_slope", x, z))
++		if y <= sea_level + 1 or slope > 4:
++			continue
++		if Vector2(x - player.global_position.x, z - player.global_position.z).length() < 16.0:
+ 			continue
+ 		var mob = MobScript.new()
+ 		mob.configure(player)
+diff -ruN currentbase-canonical/scripts/world/world_generator.gd canonical-v3/scripts/world/world_generator.gd
+--- currentbase-canonical/scripts/world/world_generator.gd	2026-07-15 17:34:57.000000000 +0000
++++ canonical-v3/scripts/world/world_generator.gd	2026-07-16 03:15:51.126250188 +0000
+@@ -340,3 +340,29 @@
+ 
+ func get_sea_level() -> int:
+ 	return SEA_LEVEL
++
++func get_biome_name(biome: int) -> String:
++	match biome:
++		BIOME_OCEAN:
++			return "Ocean"
++		BIOME_BEACH:
++			return "Beach"
++		BIOME_PLAINS:
++			return "Plains"
++		BIOME_FOREST:
++			return "Forest"
++		BIOME_BIRCH_FOREST:
++			return "Birch Forest"
++		BIOME_DESERT:
++			return "Desert"
++		BIOME_TAIGA:
++			return "Taiga"
++		BIOME_MOUNTAIN:
++			return "Mountains"
++		BIOME_SNOW:
++			return "Snowy Peaks"
++	return "Unknown"
++
++
++func get_local_slope(x: int, z: int) -> int:
++	return _spawn_slope(x, z)
+diff -ruN currentbase-canonical/scripts/world/world_runtime.gd canonical-v3/scripts/world/world_runtime.gd
+--- currentbase-canonical/scripts/world/world_runtime.gd	2026-07-15 17:35:26.000000000 +0000
++++ canonical-v3/scripts/world/world_runtime.gd	2026-07-16 03:15:51.125388667 +0000
+@@ -2,6 +2,7 @@
+ extends Node3D
+ 
+ signal exit_requested
++signal world_ready(spawn_position: Vector3)
+ 
+ const RegistryScript = preload("res://scripts/world/block_registry.gd")
+ const PlayerScript = preload("res://scripts/player/player_controller.gd")
+@@ -11,7 +12,7 @@
+ const CloudScript = preload("res://scripts/world/cloud_layer.gd")
+ const MobSpawnerScript = preload("res://scripts/world/mob_spawner.gd")
+ 
+-const SAVE_VERSION := 2
++const SAVE_VERSION := 3
+ 
+ var world_name := "New World"
+ var world_folder := "new_world"
+@@ -139,7 +140,7 @@
+ 	var generator_script = load("res://scripts/world/world_generator.gd")
+ 	generator = generator_script.new()
+ 	generator.call("configure", world_seed)
+-	var save_directory := "user://worlds/%s/regions_v2" % world_folder
++	var save_directory := "user://worlds/%s/regions_v3" % world_folder
+ 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(save_directory))
+ 	var stream = ClassDB.instantiate("VoxelStreamRegionFiles")
+ 	stream.set("directory", save_directory)
+@@ -304,7 +305,8 @@
+ 	player.set_controls_enabled(true)
+ 	_mob_spawner.enabled = true
+ 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+-	print("VOXELCRAFT_WORLD_READY")
++	world_ready.emit(player.global_position)
++	print("VOXELCRAFT_WORLD_READY spawn=%s" % player.global_position)
+ 
+ 
+ func _is_valid_player_position(position: Vector3) -> bool:
+@@ -425,7 +427,7 @@
+ 	if player == null:
+ 		return save_tracker
+ 	var state := {"version": SAVE_VERSION, "world_name": world_name, "seed": world_seed, "day_time": _day_time, "day_count": _day_count, "player": player.serialize()}
+-	var state_path := "user://worlds/%s/state_v2.json" % world_folder
++	var state_path := "user://worlds/%s/state_v3.json" % world_folder
+ 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(state_path.get_base_dir()))
+ 	var file := FileAccess.open(state_path, FileAccess.WRITE)
+ 	if file != null:
+@@ -445,7 +447,7 @@
+ 
+ 
+ func _load_player_state() -> void:
+-	var state_path := "user://worlds/%s/state_v2.json" % world_folder
++	var state_path := "user://worlds/%s/state_v3.json" % world_folder
+ 	if not FileAccess.file_exists(state_path):
+ 		return
+ 	var file := FileAccess.open(state_path, FileAccess.READ)
+@@ -474,3 +476,25 @@
+ 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+ 	exit_requested.emit()
+ 	queue_free()
++
++func get_validation_snapshot() -> Dictionary:
++	if generator == null or player == null or terrain == null:
++		return {"ready": false}
++	var x := floori(player.global_position.x)
++	var z := floori(player.global_position.z)
++	var surface := int(generator.call("get_surface_height", x, z))
++	var sea_level := int(generator.call("get_sea_level"))
++	var biome := int(generator.call("get_biome", x, z, surface))
++	var voxel_tool = terrain.call("get_voxel_tool")
++	voxel_tool.set("channel", 0)
++	var floor_block := int(voxel_tool.call("get_voxel", Vector3i(x, surface, z)))
++	var head_block := int(voxel_tool.call("get_voxel", Vector3i(x, surface + 2, z)))
++	return {
++		"ready": _world_ready,
++		"spawn": player.global_position,
++		"surface": surface,
++		"sea_level": sea_level,
++		"biome": biome,
++		"floor_block": floor_block,
++		"head_block": head_block,
++	}
