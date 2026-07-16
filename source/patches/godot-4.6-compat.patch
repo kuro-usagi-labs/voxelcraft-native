@@ -1,0 +1,12 @@
+diff -ruN canonical-v3/scripts/player/inventory_component.gd canonical-v3-compat/scripts/player/inventory_component.gd
+--- canonical-v3/scripts/player/inventory_component.gd	2026-07-15 17:27:03.000000000 +0000
++++ canonical-v3-compat/scripts/player/inventory_component.gd	2026-07-16 03:20:45.296237018 +0000
+@@ -172,7 +172,7 @@
+ 	if get_count(item_id) <= 0 or not ITEM_DATA.has(item_id):
+ 		return 1.0
+ 	var tool_type := str(ITEM_DATA[item_id].get("tool", Blocks.TOOL_NONE))
+-	var preferred := registry.get_tool(target_block)
++	var preferred: String = str(registry.get_tool(target_block))
+ 	var tier := 1.0
+ 	if item_id in [ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL]:
+ 		tier = 5.2
