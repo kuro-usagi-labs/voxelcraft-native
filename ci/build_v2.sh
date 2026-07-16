@@ -10,6 +10,8 @@ TEMPLATE_DIR="${CI_DIR}/template"
 BASE_ARCHIVE="${CI_DIR}/voxelcraft-v2-base.tar.gz"
 PATCH_FILE="${ROOT}/source/patches/canonical-v3.patch"
 PATCH_SHA256="c5e1dfff64c03f7be638ba39121362e3709b4a9d492369df60ab5d5395386e14"
+COMPAT_PATCH_FILE="${ROOT}/source/patches/godot-4.6-compat.patch"
+COMPAT_PATCH_SHA256="2a0e9a639a9695e4a244cdfbedf7220394872a7499d95b1d2e2cdc258dce9f66"
 
 VOXEL_TOOLS_TAG="v1.6"
 GODOT_EDITOR_ARCHIVE="godot.linuxbsd.editor.x86_64.zip"
@@ -49,16 +51,23 @@ test -f "${PROJECT_DIR}/scripts/player/player_controller.gd"
 test -f "${PROJECT_DIR}/scripts/player/viewmodel.gd"
 test -f "${PROJECT_DIR}/scripts/world/mob_spawner.gd"
 
-echo '== Verify and apply canonical V3 delta =='
+echo '== Verify and apply canonical V3 gameplay delta =='
 echo "${PATCH_SHA256}  ${PATCH_FILE}" | sha256sum --check
 patch --batch --forward --dry-run -d "${PROJECT_DIR}" -p1 < "${PATCH_FILE}"
 patch --batch --forward -d "${PROJECT_DIR}" -p1 < "${PATCH_FILE}"
+
+echo '== Apply Godot 4.6 compatibility fixes =='
+echo "${COMPAT_PATCH_SHA256}  ${COMPAT_PATCH_FILE}" | sha256sum --check
+patch --batch --forward --dry-run -d "${PROJECT_DIR}" -p1 < "${COMPAT_PATCH_FILE}"
+patch --batch --forward -d "${PROJECT_DIR}" -p1 < "${COMPAT_PATCH_FILE}"
+
 test -f "${PROJECT_DIR}/scripts/tests/world_smoke.gd"
 grep -q 'WORLD_VERSION := 3' "${PROJECT_DIR}/scripts/core/main.gd"
 grep -q 'SAVE_VERSION := 3' "${PROJECT_DIR}/scripts/world/world_runtime.gd"
 grep -q 'SEA_LEVEL := 62' "${PROJECT_DIR}/scripts/world/world_generator.gd"
 grep -q 'class_name HostileMob' "${PROJECT_DIR}/scripts/entities/hostile_mob.gd"
 grep -q 'class_name FirstPersonViewModel' "${PROJECT_DIR}/scripts/player/viewmodel.gd"
+grep -q 'var preferred: String' "${PROJECT_DIR}/scripts/player/inventory_component.gd"
 
 echo '== Download pinned custom Godot and export template =='
 base_url="https://github.com/Zylann/godot_voxel/releases/download/${VOXEL_TOOLS_TAG}"
