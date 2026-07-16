@@ -35,9 +35,14 @@ jobs:
       - name: Validate scripts, menu, terrain, spawn, and export
         shell: bash
         run: |
-          mkdir -p build
+          set +e
           set -o pipefail
-          bash ci/build_v2.sh 2>&1 | tee build/pipeline.log
+          bash ci/build_v2.sh 2>&1 | tee /tmp/voxelcraft-v3-pipeline.log
+          status=${PIPESTATUS[0]}
+          set -e
+          mkdir -p build
+          cp /tmp/voxelcraft-v3-pipeline.log build/pipeline.log
+          exit "${status}"
 
       - name: Post failure diagnostics to pull request
         if: failure() && github.event_name == 'pull_request'
