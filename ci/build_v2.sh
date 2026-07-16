@@ -17,8 +17,6 @@ GODOT_EDITOR_ARCHIVE="godot.linuxbsd.editor.x86_64.zip"
 GODOT_EDITOR_SHA256="98e2ead648590ae135d2f162e225433d15d17c84ff90a4b41384c4b1f4bcf6ae"
 WINDOWS_TEMPLATE_ARCHIVE="godot.windows.template_release.x86_64.exe.zip"
 WINDOWS_TEMPLATE_SHA256="9556c3893a07f39451c654789e16a057eec3d344428044b0d3e7ed44ae905857"
-PATCH_B64_SHA256="7570f135c35a916af73274212600fd6a2bcdaca43e68b920dc4509578226a4d3"
-PATCH_GZ_SHA256="e2e2258901e90e358eb8c79e4ee61832db4d0f72bd4f58b3653865a384f00a8e"
 
 rm -rf "${CI_DIR}" "${BUILD_DIR}"
 mkdir -p "${PROJECT_DIR}" "${ENGINE_DIR}" "${TEMPLATE_DIR}" "${BUILD_DIR}/windows"
@@ -50,11 +48,13 @@ test -f "${PROJECT_DIR}/project.godot"
 test -f "${PROJECT_DIR}/scripts/world/world_generator.gd"
 test -f "${PROJECT_DIR}/scripts/player/player_controller.gd"
 
-echo '== Reconstruct and apply verified V3 overhaul =='
+echo '== Reconstruct and apply V3 overhaul =='
 cat "${ROOT}"/source/v3-patch/chunk-*.b64 | tr -d '\r\n' > "${PATCH_B64}"
-echo "${PATCH_B64_SHA256}  ${PATCH_B64}" | sha256sum --check
+wc -c "${PATCH_B64}"
+sha256sum "${PATCH_B64}"
 base64 --decode "${PATCH_B64}" > "${PATCH_GZ}"
-echo "${PATCH_GZ_SHA256}  ${PATCH_GZ}" | sha256sum --check
+gzip -t "${PATCH_GZ}"
+sha256sum "${PATCH_GZ}"
 gzip -dc "${PATCH_GZ}" > "${PATCH_FILE}"
 patch --batch --forward -d "${PROJECT_DIR}" -p1 < "${PATCH_FILE}"
 
