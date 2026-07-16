@@ -8,9 +8,8 @@ PROJECT_DIR="${CI_DIR}/project"
 ENGINE_DIR="${CI_DIR}/engine"
 TEMPLATE_DIR="${CI_DIR}/template"
 BASE_ARCHIVE="${CI_DIR}/voxelcraft-v2-base.tar.gz"
-PATCH_B64="${CI_DIR}/visual-survival-v3.patch.gz.b64"
-PATCH_GZ="${CI_DIR}/visual-survival-v3.patch.gz"
-PATCH_FILE="${CI_DIR}/visual-survival-v3.patch"
+PATCH_FILE="${ROOT}/source/patches/canonical-v3.patch"
+PATCH_SHA256="c5e1dfff64c03f7be638ba39121362e3709b4a9d492369df60ab5d5395386e14"
 
 VOXEL_TOOLS_TAG="v1.6"
 GODOT_EDITOR_ARCHIVE="godot.linuxbsd.editor.x86_64.zip"
@@ -41,28 +40,25 @@ run_logged() {
   return "${exit_code}"
 }
 
-echo '== Reconstruct verified V2 base project =='
+echo '== Reconstruct verified canonical source =='
 python3 "${ROOT}/source/v2/repair_bundle.py" "${ROOT}/source/v2" "${BASE_ARCHIVE}"
 tar -xzf "${BASE_ARCHIVE}" -C "${PROJECT_DIR}"
 test -f "${PROJECT_DIR}/project.godot"
 test -f "${PROJECT_DIR}/scripts/world/world_generator.gd"
 test -f "${PROJECT_DIR}/scripts/player/player_controller.gd"
+test -f "${PROJECT_DIR}/scripts/player/viewmodel.gd"
+test -f "${PROJECT_DIR}/scripts/world/mob_spawner.gd"
 
-echo '== Reconstruct and apply V3 overhaul =='
-cat "${ROOT}"/source/v3-patch/chunk-*.b64 | tr -d '\r\n' > "${PATCH_B64}"
-wc -c "${PATCH_B64}"
-sha256sum "${PATCH_B64}"
-base64 --decode "${PATCH_B64}" > "${PATCH_GZ}"
-gzip -t "${PATCH_GZ}"
-sha256sum "${PATCH_GZ}"
-gzip -dc "${PATCH_GZ}" > "${PATCH_FILE}"
+echo '== Verify and apply canonical V3 delta =='
+echo "${PATCH_SHA256}  ${PATCH_FILE}" | sha256sum --check
+patch --batch --forward --dry-run -d "${PROJECT_DIR}" -p1 < "${PATCH_FILE}"
 patch --batch --forward -d "${PROJECT_DIR}" -p1 < "${PATCH_FILE}"
-
-test -f "${PROJECT_DIR}/scripts/entities/hostile_mob.gd"
-test -f "${PROJECT_DIR}/scripts/visuals/held_item_view.gd"
 test -f "${PROJECT_DIR}/scripts/tests/world_smoke.gd"
-grep -q 'SEA_LEVEL := 48' "${PROJECT_DIR}/scripts/world/world_generator.gd"
+grep -q 'WORLD_VERSION := 3' "${PROJECT_DIR}/scripts/core/main.gd"
+grep -q 'SAVE_VERSION := 3' "${PROJECT_DIR}/scripts/world/world_runtime.gd"
+grep -q 'SEA_LEVEL := 62' "${PROJECT_DIR}/scripts/world/world_generator.gd"
 grep -q 'class_name HostileMob' "${PROJECT_DIR}/scripts/entities/hostile_mob.gd"
+grep -q 'class_name FirstPersonViewModel' "${PROJECT_DIR}/scripts/player/viewmodel.gd"
 
 echo '== Download pinned custom Godot and export template =='
 base_url="https://github.com/Zylann/godot_voxel/releases/download/${VOXEL_TOOLS_TAG}"
@@ -162,9 +158,10 @@ WASD move | Mouse look | Space jump | Shift sprint | Ctrl crouch
 Left click mine/attack | Right click place | 1-9 hotbar
 E inventory/crafting | F eat/use | F3 debug | Escape pause
 
-V3 includes procedural biomes, rivers, caves, ores, safe surface spawning,
-first-person held items, mining particles, tools and durability, crafting,
-health/hunger/stamina, day-night lighting, clouds, and hostile Crawler mobs.
+V3 includes an animated panorama menu, original procedural pixel textures,
+continental biomes, oceans, rivers, caves, ores, trees and cacti, safe surface
+spawning, first-person tools, mining feedback, item pickups, crafting,
+health/hunger/stamina, day-night lighting, clouds, audio and hostile mobs.
 
 This is an original clean-room voxel survival project. It does not contain
 Minecraft source code, branding, sounds, textures, or Mojang assets.
